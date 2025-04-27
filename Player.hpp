@@ -149,7 +149,7 @@ private:
                 return Command{CommandType::INVALID, {}};
             }
             log_info("Robot's cmd: %s", 
-                    CommandTypeDescription.at(static_cast<size_t>(cmd.cmdtype)));
+                    CommandTypeDescription.at(static_cast<size_t>(cmd.cmdtype)).c_str());
             log_info(XQ4MS_TIMESTAMP, "Robot's pos: [%d, %d]", 
                     cmd.pos.row, cmd.pos.col);
             this->place(cmd);
@@ -173,6 +173,7 @@ private:
             for (auto&& [inc_r, inc_c] : dirs) {
                 int cur_r = pos.row + inc_r,
                     cur_c = pos.col + inc_c;
+                if (!this->board_->is_valid(cur_r, cur_c)) { continue; }
                 assert(this->board_->get_pos(cur_r, cur_c)->get_cover() == Cover::REVEALED);
                 Position p = {cur_r, cur_c};
                 if (!found.count(p)) {
@@ -200,7 +201,8 @@ private:
         int row = -1, col = -1;
         while ((row < 0 || row >= this->board_->height()) 
             or (col < 0 || col >= this->board_->width()) 
-            or (this->board_->get_pos(row, col)->get_cover() == Cover::REVEALED)) {
+            or (this->board_->get_pos(row, col)->get_cover() == Cover::REVEALED)
+            or (this->board_->get_pos(row, col)->get_flag() == Flag::FLAG)) {
             row = rand() % this->board_->height();
             col = rand() % this->board_->width();
         }
@@ -226,9 +228,7 @@ private:
                     for (auto&& [inc_r, inc_c] : dir_dirs) {
                         int cur_r = i + inc_r,
                             cur_c = j + inc_c;
-                        if (!is_valid(inc_r, inc_c)) {
-                            continue;
-                        }
+                        if (!is_valid(cur_r, cur_c)) { continue; }
                         record({{i, j}, {cur_r, cur_c}});
                     }
                 }
@@ -239,15 +239,11 @@ private:
         for (auto&& [inc_r, inc_c] : dirs) {
             int cur_r = pos.row + inc_r,
                 cur_c = pos.col + inc_c;
-            if (!is_valid(inc_r, inc_c)) {
-                continue;
-            }
+            if (!is_valid(cur_r, cur_c)) { continue; }
             for (auto&& [inc_r1, inc_c1] : dir_dirs) {
                 int cur_r1 = cur_r + inc_r1,
                     cur_c1 = cur_c + inc_c1;
-                if (!is_valid(inc_r, inc_c)) {
-                    continue;
-                }
+                if (!is_valid(inc_r, inc_c)) { continue; }
                 record({{cur_r, cur_c}, {cur_r1, cur_c1}});
             }
         }
@@ -265,7 +261,7 @@ private:
         if (!check_queue_.empty()) {
             // 查询是否有能确定的，有则直接 return，如果没有确定的，挑可能性最高的 return 
             float max_p = 0.0F;
-            Command cmp_tmp = {CommandType::INVALID, {}};
+            // Command cmp_tmp = {CommandType::INVALID, {}};
             while (!check_queue_.empty()) {
                 PositionPair pp = check_queue_.front();
                 // check_queue_.pop();  // 不要在这里 pop
@@ -278,6 +274,8 @@ private:
                     if (res.first + eps >= 1.0F) {
                         cmd = res.second;
                         // 有确定的先不 pop，再查一遍
+                        // 有了cmd_queue以后好像没有必要了
+                        // 但又好像还有点必要，因为他们动了以后pp包受影响的，后面又会加回来，没必要pop了
                         break;
                     } 
                     if (max_p < res.first) {
@@ -310,17 +308,18 @@ private:
 
     // NOTE: not equal to DebugRobot::is_valid
     bool is_valid(int row, int col) const {
-        if (this->board_->is_valid(row, col)) return false;
+        if (!this->board_->is_valid(row, col)) return false;
         // if (row < 0 || row >= this->board_->height()) return false;
         // if (col < 0 || col >= this->board_->width()) return false;
         if (this->board_->get_pos(row, col)
             ->get_cover() == Cover::COVERED) return false;
         return true;
     }
-    bool is_rest(std::shared_ptr<const Position>& cur) const {
-        return this->board_->is_valid(cur->row, cur->col)
-            || cur->get_cover() == Cover::COVERED
-            || cur->get_flag() == Flag::NO_FLAG;
+    bool is_rest(int row, int col) const {
+        if (!this->board_->is_valid(row, col)) return false;
+        auto cur = this->board_->get_pos(row, col);
+        return cur->get_cover() == Cover::COVERED
+            && cur->get_flag() == Flag::NO_FLAG;
     }
 
     void count_pq(std::shared_ptr<const Position> p, std::shared_ptr<const Position>q, 
@@ -330,8 +329,8 @@ private:
         for (auto&& [inc_r, inc_c] : dirs) {
             int cur_r = p->row + inc_r,
                 cur_c = p->col + inc_c;
+            if (!this->board_->is_valid(cur_r, cur_c)) { continue; }
             auto cur = this->board_->get_pos(cur_r, cur_c);
-            if (this->board_->is_valid(cur_r, cur_c)) { continue; }
             if (q->is_near({cur_r, cur_c})) {
                 if (cur->get_cover() == Cover::REVEALED) {
                     c_revealed_cnt++;
@@ -350,11 +349,12 @@ private:
                 }
             }
         }
+        c_revealed_cnt--;  // 去掉q本身
         for (auto&& [inc_r, inc_c] : dirs) {
             int cur_r = q->row + inc_r,
                 cur_c = q->col + inc_c;
+            if (!this->board_->is_valid(cur_r, cur_c)) { continue; }
             auto cur = this->board_->get_pos(cur_r, cur_c);
-            if (this->board_->is_valid(cur_r, cur_c)) { continue; }
             if (p->is_near({cur_r, cur_c})) {
                 // hello world
             } else {
@@ -369,36 +369,45 @@ private:
         }
     }
     void dcreveal(std::shared_ptr<const Position> p) {
+        log_infer(0, "dcreveal");
         for (auto&& [inc_r, inc_c] : dirs) {
             int cur_r = p->row + inc_r,
                 cur_c = p->col + inc_c;
-            auto cur = this->board_->get_pos(cur_r, cur_c);
-            if (!is_rest(cur)) { continue; }
+            if (!is_rest(cur_r, cur_c)) { continue; }
             cmd_queue_.push_back({CommandType::REVEAL, {cur_r, cur_c}});
         }
     }
     void dcflag(std::shared_ptr<const Position> p) {
+        log_infer(0, "dcflag");
         for (auto&& [inc_r, inc_c] : dirs) {
             int cur_r = p->row + inc_r,
                 cur_c = p->col + inc_c;
-            auto cur = this->board_->get_pos(cur_r, cur_c);
-            if (!is_rest(cur)) { continue; }
+            if (!is_rest(cur_r, cur_c)) { continue; }
             cmd_queue_.push_back({CommandType::FLAG, {cur_r, cur_c}});
         }
     }
     void dcmp(std::shared_ptr<const Position> p, std::shared_ptr<const Position> q) {
-        for (auto&& [inc_r, inc_c] : dirs) {
-            int cur_r = q->row + inc_r,
-                cur_c = q->col + inc_c;
-            auto cur = this->board_->get_pos(cur_r, cur_c);
-            if (!is_rest(cur) || cur->is_near(*p)) { continue; }  // can i?
-            cmd_queue_.push_back({CommandType::REVEAL, {cur_r, cur_c}});
-        }
+        log_infer(0, "dcmp");
+        screveal(q, p);
+        scflag(p, q);
+    }
+    void screveal(std::shared_ptr<const Position> p, std::shared_ptr<const Position> q) {
+        log_infer(0, "screveal");
         for (auto&& [inc_r, inc_c] : dirs) {
             int cur_r = p->row + inc_r,
                 cur_c = p->col + inc_c;
-            auto cur = this->board_->get_pos(cur_r, cur_c);
-            if (!is_rest(cur) || cur->is_near(*q)) { continue; }
+            if (!is_rest(cur_r, cur_c)) { continue; }
+            if (q->is_near({cur_r, cur_c})) { continue; }
+            cmd_queue_.push_back({CommandType::REVEAL, {cur_r, cur_c}});
+        }
+    }
+    void scflag(std::shared_ptr<const Position> p, std::shared_ptr<const Position> q) {
+        log_infer(0, "scflag");
+        for (auto&& [inc_r, inc_c] : dirs) {
+            int cur_r = p->row + inc_r,
+                cur_c = p->col + inc_c;
+            if (!is_rest(cur_r, cur_c)) { continue; }
+            if (q->is_near({cur_r, cur_c})) { continue; }
             cmd_queue_.push_back({CommandType::FLAG, {cur_r, cur_c}});
         }
     }
@@ -421,17 +430,20 @@ private:
             dcreveal(p); 
         } else if (q_rest_mine == 0 && (q_rest_cnt || c_rest_cnt)) {
             dcreveal(q);
-        } else if (p_rest_mine == p_rest_cnt + c_rest_cnt) {
+        } else if (p_rest_mine && p_rest_mine == p_rest_cnt + c_rest_cnt) {
             dcflag(p);
-        } else if (q_rest_mine == q_rest_cnt + c_rest_cnt) {
+        } else if (q_rest_mine && q_rest_mine == q_rest_cnt + c_rest_cnt) {
             dcflag(q);
-        } else if (p_rest_mine > q_rest_mine) {
-            if (p_rest_mine - q_rest_mine == p_rest_cnt) {
-                dcmp(p, q);
+        } else if (p_rest_mine > q_rest_mine && p_rest_mine - q_rest_mine == p_rest_cnt) {
+            dcmp(p, q);
+        } else if (p_rest_mine < q_rest_mine && q_rest_mine - p_rest_mine == q_rest_cnt) {
+            dcmp(q, p);
+        } else if (p_rest_mine == q_rest_mine) {  // 挖洞
+            if (p_rest_cnt == 0) {
+                screveal(q, p);
             }
-        } else if (p_rest_mine < q_rest_mine) {
-            if (q_rest_mine - p_rest_mine == q_rest_cnt) {
-                dcmp(q, p);
+            if (q_rest_cnt == 0) {
+                screveal(p, q);
             }
         }
         if (!cmd_queue_.empty()) {

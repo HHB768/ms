@@ -51,7 +51,7 @@ constexpr const char* HELPER_INVALID_POSITION  = "Invalid position, plz try agai
                                              
 constexpr const char* ERROR_NEW_GC = "An error occurs when we new GameController()";
 constexpr const char* ERROR_UNKNOWN_COMMAND_TYPE = "Unknown CommandType";
-constexpr const char* ERROR_UNKNOWN_TILE_STATUS = "Unknown tile status";
+constexpr const char* ERROR_UNKNOWN_TILE_STATUS  = "Unknown tile status";
 constexpr const char* ERROR_UNKNOWN_GAME_STATUS  = "Unknown game status";
 
 }  // endof namespace mfwu

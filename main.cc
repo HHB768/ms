@@ -22,7 +22,8 @@ int main() {
 #       define __Board__ GuiBoard
 #endif  // __CMD_MODE__
 
-        using __ROBOT__ = DebugRobot;
+        // using __ROBOT__ = DebugRobot;
+        using __ROBOT__ = HumanLikeRobot;
         
         std::unique_ptr<GameController_base> game = nullptr;
 

@@ -22,13 +22,14 @@ template <typename Board_type, typename Player_type>
 class GameController : public GameController_base {
 public:
     GameController() 
-        : board_(std::make_shared<Board_type>()), player_(board_) {
+        : board_(std::make_shared<Board_type>()), 
+          player_(std::make_shared<Player_type>(board_)) {
         _gc_init_();
     }  // CHECK
     ~GameController() {}
 
     GameStatus start() override {
-        log_new_game(board_->get_height(), board_->get_width());
+        log_new_game(board_->height(), board_->width());
         this->board_->show();
         CommandType cmd_type;
         this->game_play_task(cmd_type);
@@ -56,7 +57,7 @@ public:
     void restart_game_init(GameStatus status) {
         log_end_game(status);
         archive_.flush(status);
-        log_new_game(board_->get_height(), board_->get_width());
+        log_new_game(board_->height(), board_->width());
         board_->reset();
     }
 
@@ -97,7 +98,7 @@ private:
     }
 
     Command advance() {
-        Command cmd = player_.play();
+        Command cmd = player_->play();
         CommandType cmd_type = cmd.cmdtype;
         if (cmd_type == CommandType::FLAG
             or cmd_type == CommandType::REVEAL) {
@@ -114,8 +115,8 @@ private:
         return board_->is_end(cmd.pos.row, cmd.pos.col);
     }
 
-    std::shared_ptr<Board_type> board_;
-    Player_type player_;
+    std::shared_ptr<Board_base> board_;
+    std::shared_ptr<Player> player_;
     Archive<Board_type> archive_;
 
 };  // endof class GameController

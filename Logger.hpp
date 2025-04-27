@@ -229,6 +229,7 @@ public:
             inference_appender_.append(level, lmsg);
         }
 #endif  // __LOG_INFERENCE_ELSEWHERE__
+        file_appender_.flush();  // TODO: only be effective when player is an object of robot
     } 
 
     void log(LogLevel level, time_t time_stamp, const std::string& msg) {

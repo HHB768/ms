@@ -26,6 +26,11 @@ public:
     virtual std::shared_ptr<const Position> get_pos(int row, int col) const = 0;
     virtual bool all_clear(const PositionPair& pp) const = 0;
 
+    virtual void reset() = 0;
+    virtual void winner_display(int) const = 0;
+    virtual std::string serialize() const = 0;
+    virtual int is_end(int, int) const = 0;
+
 protected:
     Tile last_tile_;
     bool status_;
@@ -89,7 +94,7 @@ public:
     }
 
     // TODO: return enum
-    int is_end(int row, int col) {
+    int is_end(int row, int col) const {
         if (board_[row][col]->is_mine() 
             && board_[row][col]->get_cover() == Cover::REVEALED) { return 1; }  // failures
         if (tile_count_down_ == 0) { return 2; }  // victory
@@ -107,7 +112,7 @@ public:
         return board_[row][col];
     }
     
-    virtual void winner_display(int res) {
+    virtual void winner_display(int res) const {
         if (res == 1) {
             cmd_clear();
             std::cout << "failure\n";
@@ -119,7 +124,7 @@ public:
         }
     }
     
-    std::string serialize() { return {}; }
+    std::string serialize() const override { return {}; }
 
 protected:
     std::vector<std::vector<std::shared_ptr<Position>>> board_;
