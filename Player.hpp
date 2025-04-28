@@ -18,6 +18,7 @@ public:
     virtual void reset() {}
 
 protected:
+    // Position last_pos_;  // place之后直接更新也不错，就不需要下一回合查看上一回合的反馈了
     std::shared_ptr<Board_base> board_;
 };  // endof class Player
 
@@ -134,13 +135,14 @@ private:
     }
 
     Command play() override {
+        Command cmd = {CommandType::INVALID, {}};
         if (is_in_opening_) {
             if (is_good_opening()) {
                 is_in_opening_ = false;
                 return this->play();
             }
             log_info("Robot randomly reveals:");
-            Command cmd = this->randomly_reveal();
+            cmd = this->randomly_reveal();
             if (cmd.cmdtype != CommandType::REVEAL) {
                 log_info("Invalid cmd type returned from randomly_reveal()");
                 return Command{CommandType::INVALID, {}};
@@ -153,16 +155,16 @@ private:
             log_info(XQ4MS_TIMESTAMP, "Robot's pos: [%d, %d]", 
                     cmd.pos.row, cmd.pos.col);
             this->place(cmd);
-            if (cmd.cmdtype == CommandType::REVEAL 
-                and this->board_->get_pos(cmd.pos.row, cmd.pos.col)->get_cover() == Cover::REVEALED
-                and this->board_->get_pos(cmd.pos.row, cmd.pos.col)->get_num() == 0) {
-                std::unordered_set<Position, PositionHash, PositionEqual> found;
-                recursive_update_deduction(cmd.pos, found);
-            }
-            return cmd;
         } else {
-            return RobotPlayer::play();
+            cmd = RobotPlayer::play();
         }
+        if (cmd.cmdtype == CommandType::REVEAL 
+            and this->board_->get_pos(cmd.pos.row, cmd.pos.col)->get_cover() == Cover::REVEALED
+            and this->board_->get_pos(cmd.pos.row, cmd.pos.col)->get_num() == 0) {
+            std::unordered_set<Position, PositionHash, PositionEqual> found;
+            recursive_update_deduction(cmd.pos, found);
+        }
+        return cmd;
     }
 
     void recursive_update_deduction(const Position& pos, 
@@ -243,7 +245,7 @@ private:
             for (auto&& [inc_r1, inc_c1] : dir_dirs) {
                 int cur_r1 = cur_r + inc_r1,
                     cur_c1 = cur_c + inc_c1;
-                if (!is_valid(inc_r, inc_c)) { continue; }
+                if (!is_valid(cur_r1, cur_c1)) { continue; }
                 record({{cur_r, cur_c}, {cur_r1, cur_c1}});
             }
         }
@@ -452,7 +454,7 @@ private:
             return {1.0F, cmd};
         }
 
-        return {0.5F, randomly_reveal()};  // TODO
+        return {0.5F, randomly_reveal()};  // TODO: cannot randomly reveal, may cause longtime wait
     }
 
     bool is_in_opening_ = true;
