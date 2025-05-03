@@ -19,6 +19,7 @@ public:
 
 protected:
     // Position last_pos_;  // place之后直接更新也不错，就不需要下一回合查看上一回合的反馈了
+    // 有一说一这个挺麻烦的，因为这一轮
     std::shared_ptr<Board_base> board_;
 };  // endof class Player
 
@@ -77,7 +78,7 @@ public:
             return Command{CommandType::INVALID, {}};
         }
         log_info("Robot's cmd: %s", 
-                 CommandTypeDescription.at(static_cast<size_t>(cmd.cmdtype)));
+                 CommandTypeDescription.at(static_cast<size_t>(cmd.cmdtype)).c_str());
         log_info(XQ4MS_TIMESTAMP, "Robot's pos: [%d, %d]", 
                  cmd.pos.row, cmd.pos.col);
         this->place(cmd);
@@ -163,6 +164,8 @@ private:
             and this->board_->get_pos(cmd.pos.row, cmd.pos.col)->get_num() == 0) {
             std::unordered_set<Position, PositionHash, PositionEqual> found;
             recursive_update_deduction(cmd.pos, found);
+        } else {
+            update_deduction(cmd.pos);
         }
         return cmd;
     }
@@ -208,7 +211,7 @@ private:
             row = rand() % this->board_->height();
             col = rand() % this->board_->width();
         }
-        sleep(1);
+        // sleep(1);
         return {CommandType::REVEAL, {row, col}};
     }
     void record(const PositionPair& pp) {
@@ -245,66 +248,93 @@ private:
             for (auto&& [inc_r1, inc_c1] : dir_dirs) {
                 int cur_r1 = cur_r + inc_r1,
                     cur_c1 = cur_c + inc_c1;
-                if (!is_valid(cur_r1, cur_c1)) { continue; }
+                if (!is_valid(cur_r1, cur_c1) 
+                    && !(cur_r1 == pos.row && cur_c1 == pos.col
+                         && this->board_->get_pos(cur_r1, cur_c1)->get_cover() == Cover::REVEALED)) { continue; }
                 record({{cur_r, cur_c}, {cur_r1, cur_c1}});
             }
         }
     }
 
     Command get_best_cmd() override {
-        if (!cmd_queue_.empty()) {
-            Command ret = std::move(cmd_queue_.back());
-            cmd_queue_.pop_back();
-            return ret;
-        }
-        size_t height = this->board_->height();
-        size_t width  = this->board_->width();
         Command cmd = {CommandType::INVALID, {}};
-        if (!check_queue_.empty()) {
-            // 查询是否有能确定的，有则直接 return，如果没有确定的，挑可能性最高的 return 
-            float max_p = 0.0F;
-            // Command cmp_tmp = {CommandType::INVALID, {}};
-            while (!check_queue_.empty()) {
-                PositionPair pp = check_queue_.front();
-                // check_queue_.pop();  // 不要在这里 pop
-                if (this->board_->all_clear(pp)) {
-                    all_possible_pairs_.erase(pp);
-                    queue_menbers_.erase(pp);
-                    check_queue_.pop();
-                } else {
-                    std::pair<float, Command> res = calc_prob(pp);
-                    if (res.first + eps >= 1.0F) {
-                        cmd = res.second;
-                        // 有确定的先不 pop，再查一遍
-                        // 有了cmd_queue以后好像没有必要了
-                        // 但又好像还有点必要，因为他们动了以后pp包受影响的，后面又会加回来，没必要pop了
-                        break;
-                    } 
-                    if (max_p < res.first) {
-                        max_p = res.first;
-                        cmd = res.second;
-                    }
-                    queue_menbers_.erase(pp);
-                    check_queue_.pop();
-                }
-            }
-            assert(cmd.cmdtype != CommandType::INVALID);
-        } else if (!all_possible_pairs_.empty()) {
-            // 遍历所有可能的 PositionPair，插入到待检查序列中
-            // 还有一种可能，cmd点开的是 0，应当检查这一片连通域的结果  // play 里面检查过了
-            for (auto&& pp : all_possible_pairs_) {
-                check_queue_.emplace(pp);
-            }
-            queue_menbers_ = all_possible_pairs_;
-            cmd = get_best_cmd();
+        if (!cmd_queue_.empty()) {
+            cmd = std::move(cmd_queue_.back());
+            cmd_queue_.pop_back();
         } else {
-            // 说明刚开始分析，此时应该有没记录的 pair，不然不会调用 get_best_cmd
-            assert(is_good_opening());
-            init_deduction();
-            cmd = get_best_cmd();
+            size_t height = this->board_->height();
+            size_t width  = this->board_->width();
+            if (!check_queue_.empty()) {
+                // 查询是否有能确定的，有则直接 return，如果没有确定的，挑可能性最高的 return 
+                float max_p = 0.0F;
+                bool opt_flag = false;
+                // Command cmp_tmp = {CommandType::INVALID, {}};
+                while (!check_queue_.empty()) {
+                    PositionPair pp = check_queue_.front();
+                    // check_queue_.pop();  // 不要在这里 pop
+                    if (this->board_->all_clear(pp)) {
+                        all_possible_pairs_.erase(pp);
+                        queue_menbers_.erase(pp);
+                        check_queue_.pop();
+                    } else {
+                        std::pair<float, Command> res = calc_prob(pp);
+                        if (res.first + eps >= 1.0F) {
+                            cmd = res.second;
+                            opt_flag = true;
+                            // 有确定的先不 pop，再查一遍
+                            // 有了cmd_queue以后好像没有必要了
+                            // 但又好像还有点必要，因为他们动了以后pp包受影响的，后面又会加回来，没必要pop了
+                            break;
+                        } 
+                        if (max_p < res.first) {
+                            max_p = res.first;
+                            cmd = res.second;
+                        }
+                        queue_menbers_.erase(pp);
+                        check_queue_.pop();
+                    }
+                }
+                if (!opt_flag) {
+                    if (!all_possible_pairs_.empty()) {
+                        // 遍历所有可能的 PositionPair，插入到待检查序列中
+                        // 还有一种可能，cmd点开的是 0，应当检查这一片连通域的结果  // play 里面检查过了
+                        // 有没有可能， all_possible_pairs 里面有确定解，但不在check_queue里面，导致忽略了
+                        // 搬过来试试
+                        for (auto&& pp : all_possible_pairs_) {
+                            check_queue_.emplace(pp);
+                        }
+                        queue_menbers_ = all_possible_pairs_;
+                        cmd = get_best_cmd();
+                    }
+                    if (check_queue_.empty()) {
+                        log_info("Uncertain next move, asking for human intervention");
+                        cmd = this->board_->get_command();
+                        log_info("Command type: %s, pos: [%d, %d]", 
+                            CommandTypeDescription.at(static_cast<size_t>(cmd.cmdtype)), 
+                            cmd.pos.row, cmd.pos.col);
+                    }
+                }
+                assert(cmd.cmdtype != CommandType::INVALID);
+            } else if (!all_possible_pairs_.empty()) {
+                // 遍历所有可能的 PositionPair，插入到待检查序列中
+                // 还有一种可能，cmd点开的是 0，应当检查这一片连通域的结果  // play 里面检查过了
+                // 有没有可能， all_possible_pairs 里面有确定解，但不在check_queue里面，导致忽略了
+                for (auto&& pp : all_possible_pairs_) {
+                    check_queue_.emplace(pp);
+                }
+                queue_menbers_ = all_possible_pairs_;
+                cmd = get_best_cmd();
+            } else {
+                // 说明刚开始分析，此时应该有没记录的 pair，不然不会调用 get_best_cmd
+                assert(is_good_opening());
+                init_deduction();
+                cmd = get_best_cmd();
+            }
         }
+        
         // 在返回 cmd 之前，先把涉及的周围位置都纳入 check_queue_
-        update_deduction(cmd.pos);
+        // update_deduction(cmd.pos);
+        // 此时还没更新，不好
         return cmd;
     }
 
@@ -331,7 +361,14 @@ private:
         for (auto&& [inc_r, inc_c] : dirs) {
             int cur_r = p->row + inc_r,
                 cur_c = p->col + inc_c;
-            if (!this->board_->is_valid(cur_r, cur_c)) { continue; }
+            if (!this->board_->is_valid(cur_r, cur_c)) {
+                if (q->is_near({cur_r, cur_c})) {
+                    c_revealed_cnt++;
+                } else {
+                    p_revealed_cnt++;
+                }
+                continue;
+            }
             auto cur = this->board_->get_pos(cur_r, cur_c);
             if (q->is_near({cur_r, cur_c})) {
                 if (cur->get_cover() == Cover::REVEALED) {
@@ -355,7 +392,14 @@ private:
         for (auto&& [inc_r, inc_c] : dirs) {
             int cur_r = q->row + inc_r,
                 cur_c = q->col + inc_c;
-            if (!this->board_->is_valid(cur_r, cur_c)) { continue; }
+            if (!this->board_->is_valid(cur_r, cur_c)) {
+                if (p->is_near({cur_r, cur_c})) {
+                    // hello world
+                } else {
+                    q_revealed_cnt++;
+                }
+                continue;
+            }
             auto cur = this->board_->get_pos(cur_r, cur_c);
             if (p->is_near({cur_r, cur_c})) {
                 // hello world
@@ -424,8 +468,8 @@ private:
         count_pq(p, q, p_flag_cnt, q_flag_cnt, c_flag_cnt, 
                        p_revealed_cnt, q_revealed_cnt, c_revealed_cnt, 
                        p_rest_cnt, q_rest_cnt, c_rest_cnt);
-        int p_rest_mine = m - p_flag_cnt;
-        int q_rest_mine = n - q_flag_cnt;
+        int p_rest_mine = m - p_flag_cnt - c_flag_cnt;
+        int q_rest_mine = n - q_flag_cnt - c_flag_cnt;
         // 应该有一个队列把能确定的都存起来，下次就直接开，不用再推导了
         // 来了嗷 >_0  25.04.26
         if (p_rest_mine == 0 && (p_rest_cnt || c_rest_cnt)) {

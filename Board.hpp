@@ -241,18 +241,33 @@ private:
     }
 
     bool all_clear(const PositionPair& pp) const {
+        int p1flag = 0, p2flag = 0;
         for (auto&& [inc_r, inc_c] : dirs) {
             int cur_r = pp.p1.row + inc_r,
                 cur_c = pp.p1.col + inc_c;
             if (!is_valid(cur_r, cur_c)) { continue; }
-            if (this->board_[cur_r][cur_c]->get_cover() == Cover::COVERED) { return false; }
+            if (this->board_[cur_r][cur_c]->get_cover() == Cover::COVERED) {
+                if (this->board_[cur_r][cur_c]->get_flag() == Flag::FLAG) {
+                    p1flag++;
+                } else {
+                    return false;
+                }
+            }
         }
+        if (p1flag != this->board_[pp.p1.row][pp.p1.col]->get_num()) return false;
         for (auto&& [inc_r, inc_c] : dirs) {
             int cur_r = pp.p2.row + inc_r,
                 cur_c = pp.p2.col + inc_c;
             if (!is_valid(cur_r, cur_c)) { continue; }
-            if (this->board_[cur_r][cur_c]->get_cover() == Cover::COVERED) { return false; }
+            if (this->board_[cur_r][cur_c]->get_cover() == Cover::COVERED) {
+                if (this->board_[cur_r][cur_c]->get_flag() == Flag::FLAG) {
+                    p2flag++;
+                } else {
+                    return false;
+                }
+            }
         }
+        if (p2flag != this->board_[pp.p2.row][pp.p2.col]->get_num()) return false;
         return true;
     }
 };  // endof class Board
