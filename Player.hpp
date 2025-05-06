@@ -214,7 +214,11 @@ private:
         // sleep(1);
         return {CommandType::REVEAL, {row, col}};
     }
+    bool is_covered(const Position& pos) const {
+        return this->board_->get_pos(pos.row, pos.col)->get_cover() == Cover::COVERED;
+    }
     void record(const PositionPair& pp) {
+        if (is_covered(pp.p1) || is_covered(pp.p2)) return ;
         if (this->board_->all_clear(pp)) return ;
         if (!queue_menbers_.count(pp)) {
             queue_menbers_.insert(pp);
@@ -230,10 +234,11 @@ private:
         for (int i = 0; i < height; i++) {
             for (int j = 0; j < width; j++) {
                 if (this->board_->get_pos(i, j)->get_cover() == Cover::REVEALED) {
-                    for (auto&& [inc_r, inc_c] : dir_dirs) {
+                    record({{i, j}, {i, j}});
+                    for (auto&& [inc_r, inc_c] : ldirs) {  //
                         int cur_r = i + inc_r,
                             cur_c = j + inc_c;
-                        if (!is_valid(cur_r, cur_c)) { continue; }
+                        if (!this->board_->is_valid(cur_r, cur_c)) { continue; }
                         record({{i, j}, {cur_r, cur_c}});
                     }
                 }
@@ -241,17 +246,19 @@ private:
         }
     }
     void update_deduction(const Position& pos) {
+        record({pos, pos});
         for (auto&& [inc_r, inc_c] : dirs) {
             int cur_r = pos.row + inc_r,
                 cur_c = pos.col + inc_c;
-            if (!is_valid(cur_r, cur_c)) { continue; }
-            for (auto&& [inc_r1, inc_c1] : dir_dirs) {
+            if (!this->board_->is_valid(cur_r, cur_c)) { continue; }
+            record({{cur_r, cur_c}, {cur_r, cur_c}});
+            record({pos, {cur_r, cur_c}});
+            for (auto&& [inc_r1, inc_c1] : dirs) {
                 int cur_r1 = cur_r + inc_r1,
                     cur_c1 = cur_c + inc_c1;
-                if (!is_valid(cur_r1, cur_c1) 
-                    && !(cur_r1 == pos.row && cur_c1 == pos.col
-                         && this->board_->get_pos(cur_r1, cur_c1)->get_cover() == Cover::REVEALED)) { continue; }
+                if (!this->board_->is_valid(cur_r1, cur_c1)) { continue; }
                 record({{cur_r, cur_c}, {cur_r1, cur_c1}});
+                record({pos, {cur_r1, cur_c1}});
             }
         }
     }
@@ -299,15 +306,21 @@ private:
                         // 遍历所有可能的 PositionPair，插入到待检查序列中
                         // 还有一种可能，cmd点开的是 0，应当检查这一片连通域的结果  // play 里面检查过了
                         // 有没有可能， all_possible_pairs 里面有确定解，但不在check_queue里面，导致忽略了
-                        // 搬过来试试
-                        for (auto&& pp : all_possible_pairs_) {
-                            check_queue_.emplace(pp);
-                        }
-                        queue_menbers_ = all_possible_pairs_;
-                        cmd = get_best_cmd();
+                        // 搬过来试试（暂时没有发现，先注释掉，后面发现了再说）
+                        // 不过我发现，all_possible_pairs_好像没有单独出现的地方，也就是它好像没有用
+                        // for (auto&& pp : all_possible_pairs_) {
+                        //     check_queue_.emplace(pp);
+                        // }
+                        // queue_menbers_ = all_possible_pairs_;
+                        // cmd = get_best_cmd();
                     }
                     if (check_queue_.empty()) {
                         log_info("Uncertain next move, asking for human intervention");
+                        // debug
+                        // for (auto&& pp : all_possible_pairs_) {
+                        //     std::cout << "[" << pp.p1.row << ", " << pp.p1.col << "]"
+                        //               << " [" << pp.p2.row << ", " << pp.p2.col << "]" << "\n";
+                        // }
                         cmd = this->board_->get_command();
                         log_info("Command type: %s, pos: [%d, %d]", 
                             CommandTypeDescription.at(static_cast<size_t>(cmd.cmdtype)), 
@@ -388,7 +401,7 @@ private:
                 }
             }
         }
-        c_revealed_cnt--;  // 去掉q本身
+        if (q->is_near(*p)) c_revealed_cnt--;  // 去掉q本身
         for (auto&& [inc_r, inc_c] : dirs) {
             int cur_r = q->row + inc_r,
                 cur_c = q->col + inc_c;
@@ -461,6 +474,10 @@ private:
     std::pair<float, Command> calc_prob(const PositionPair& pp) {
         auto p = this->board_->get_pos(pp.p1.row, pp.p1.col);
         auto q = this->board_->get_pos(pp.p2.row, pp.p2.col);
+        if (p->row == q->row && p->col == q->col) {
+            // CHECK: IF NEED
+        }
+
         int m = p->get_num(), n = q->get_num();
         int p_flag_cnt = 0, q_flag_cnt = 0, c_flag_cnt = 0;
         int p_revealed_cnt = 0, q_revealed_cnt = 0, c_revealed_cnt = 0;

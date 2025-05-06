@@ -202,6 +202,11 @@ const std::unordered_map<size_t, std::string> GameStatusDescription = {
 std::vector<std::pair<int, int>> dirs = {{1, 0}, {0, 1}, {1, 1}, {1, -1},
                                          {-1, 0}, {0, -1}, {-1, -1}, {-1, 1}};
 std::vector<std::pair<int, int>> dir_dirs = {{1, 0}, {0, 1}, {-1, 0}, {0, -1}};
+std::vector<std::pair<int, int>> ldirs = {{1, 0}, {0, 1}, {1, 1}, {1, -1},
+                                          {-1, 0}, {0, -1}, {-1, -1}, {-1, 1},
+                                          {-2, -2}, {-2, -1}, {-2, 0}, {-2, 1}, {-2, 2},
+                                          {-1, -2}, {-1, 2}, {0, -2}, {0, 2}, {1, -2}, {1, 2},
+                                          {2, -2}, {2, -1}, {2, 0}, {2, 1}, {2, 2}};
 
 inline void append_time_info(std::string& str) {
     time_t now = time(0);
