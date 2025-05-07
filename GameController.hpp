@@ -59,6 +59,7 @@ public:
         archive_.flush(status);
         log_new_game(board_->height(), board_->width());
         board_->reset();
+        player_->reset();
     }
 
     void abrupt_flush(GameStatus status) {

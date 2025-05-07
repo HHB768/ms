@@ -301,18 +301,20 @@ private:
                         check_queue_.pop();
                     }
                 }
-                if (!opt_flag) {
+                if (!is_once_ && !opt_flag) {
                     if (!all_possible_pairs_.empty()) {
                         // 遍历所有可能的 PositionPair，插入到待检查序列中
                         // 还有一种可能，cmd点开的是 0，应当检查这一片连通域的结果  // play 里面检查过了
                         // 有没有可能， all_possible_pairs 里面有确定解，但不在check_queue里面，导致忽略了
                         // 搬过来试试（暂时没有发现，先注释掉，后面发现了再说）
-                        // 不过我发现，all_possible_pairs_好像没有单独出现的地方，也就是它好像没有用
-                        // for (auto&& pp : all_possible_pairs_) {
-                        //     check_queue_.emplace(pp);
-                        // }
-                        // queue_menbers_ = all_possible_pairs_;
-                        // cmd = get_best_cmd();
+                        // 不过我发现，all_possible_pairs_好像没有单独出现的地方，也就是它好像没有用 5.6
+                        // 还是有用的，可能 check_queue里面有些内容一开始是不可解的，但后面时机成熟了已经被pop掉了
+                        // 另外，用在调试时也很不错，方便查看有什么pair可以考虑
+                        for (auto&& pp : all_possible_pairs_) {
+                            check_queue_.emplace(pp);
+                        }
+                        queue_menbers_ = all_possible_pairs_;
+                        cmd = get_best_cmd_once();
                     }
                     if (check_queue_.empty()) {
                         log_info("Uncertain next move, asking for human intervention");
@@ -323,20 +325,18 @@ private:
                         // }
                         cmd = this->board_->get_command();
                         log_info("Command type: %s, pos: [%d, %d]", 
-                            CommandTypeDescription.at(static_cast<size_t>(cmd.cmdtype)), 
+                            CommandTypeDescription.at(static_cast<size_t>(cmd.cmdtype)).c_str(), 
                             cmd.pos.row, cmd.pos.col);
                     }
                 }
                 assert(cmd.cmdtype != CommandType::INVALID);
-            } else if (!all_possible_pairs_.empty()) {
-                // 遍历所有可能的 PositionPair，插入到待检查序列中
-                // 还有一种可能，cmd点开的是 0，应当检查这一片连通域的结果  // play 里面检查过了
-                // 有没有可能， all_possible_pairs 里面有确定解，但不在check_queue里面，导致忽略了
+            } else if (!is_once_ && !all_possible_pairs_.empty()) {
+                // 可能 all_possible_pairs 里面有确定解，但不在check_queue里面，导致忽略了
                 for (auto&& pp : all_possible_pairs_) {
                     check_queue_.emplace(pp);
                 }
                 queue_menbers_ = all_possible_pairs_;
-                cmd = get_best_cmd();
+                cmd = get_best_cmd_once();
             } else {
                 // 说明刚开始分析，此时应该有没记录的 pair，不然不会调用 get_best_cmd
                 assert(is_good_opening());
@@ -348,6 +348,14 @@ private:
         // 在返回 cmd 之前，先把涉及的周围位置都纳入 check_queue_
         // update_deduction(cmd.pos);
         // 此时还没更新，不好
+        return cmd;
+    }
+
+    // 新概念 goto
+    Command get_best_cmd_once() {
+        is_once_ = true;
+        Command cmd = get_best_cmd();
+        is_once_ = false;
         return cmd;
     }
 
@@ -428,7 +436,7 @@ private:
         }
     }
     void dcreveal(std::shared_ptr<const Position> p) {
-        log_infer(0, "dcreveal");
+        log_infer(0, "dcreveal: [%d, %d]", p->row, p->col);
         for (auto&& [inc_r, inc_c] : dirs) {
             int cur_r = p->row + inc_r,
                 cur_c = p->col + inc_c;
@@ -437,7 +445,7 @@ private:
         }
     }
     void dcflag(std::shared_ptr<const Position> p) {
-        log_infer(0, "dcflag");
+        log_infer(0, "dcflag: [%d, %d]", p->row, p->col);
         for (auto&& [inc_r, inc_c] : dirs) {
             int cur_r = p->row + inc_r,
                 cur_c = p->col + inc_c;
@@ -446,12 +454,12 @@ private:
         }
     }
     void dcmp(std::shared_ptr<const Position> p, std::shared_ptr<const Position> q) {
-        log_infer(0, "dcmp");
+        log_infer(0, "dcmp: [%d, %d][%d, %d]", p->row, p->col, q->row, q->col);
         screveal(q, p);
         scflag(p, q);
     }
     void screveal(std::shared_ptr<const Position> p, std::shared_ptr<const Position> q) {
-        log_infer(0, "screveal");
+        log_infer(0, "screveal: [%d, %d][%d, %d]", p->row, p->col, q->row, q->col);
         for (auto&& [inc_r, inc_c] : dirs) {
             int cur_r = p->row + inc_r,
                 cur_c = p->col + inc_c;
@@ -461,7 +469,7 @@ private:
         }
     }
     void scflag(std::shared_ptr<const Position> p, std::shared_ptr<const Position> q) {
-        log_infer(0, "scflag");
+        log_infer(0, "scflag: [%d, %d]", p->row, p->col);
         for (auto&& [inc_r, inc_c] : dirs) {
             int cur_r = p->row + inc_r,
                 cur_c = p->col + inc_c;
@@ -519,6 +527,7 @@ private:
     }
 
     bool is_in_opening_ = true;
+    bool is_once_ = false;
     std::vector<Command> cmd_queue_;
     std::queue<PositionPair> check_queue_;
     std::unordered_set<PositionPair, PositionPairHash, PositionPairEqual> queue_menbers_;
