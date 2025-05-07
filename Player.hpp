@@ -44,7 +44,7 @@ public:
         case CommandType::QUIT : {
         } break;
         case CommandType::XQ4MS : {
-            log_info(                 "XQ41-GB cheater begins...");
+            log_info(                 "XQ41-MS cheater begins...");
             log_info(XQ4MS_TIMESTAMP, ">>>>>>>>>>>>>>>>>>>>>>>>>");
             log_info(XQ4MS_TIMESTAMP, ":D :) XD TT >.< -^- (: zz");
             sleep(2);

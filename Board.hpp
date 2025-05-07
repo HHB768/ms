@@ -40,6 +40,9 @@ protected:
 template <BoardSize Size=BoardSize::Small>
 class Board : public Board_base {
 public:
+    using ArchiveSeq_type = std::string;
+    using ArchiveTbl_type = std::vector<std::vector<size_t>>;
+
     static constexpr BoardDimension dims = get_board_dimension(Size);
     static constexpr size_t height_ = dims.height;
     static constexpr size_t width_  = dims.width;
@@ -124,7 +127,36 @@ public:
         }
     }
     
-    std::string serialize() const override { return {}; }
+    std::string serialize() const override {
+        std::stringstream ss;
+        for (int i = 0; i < height_; i++) {
+            for (int j = 0; j < width_; j++) {
+                if (board_[i][j]->get_cover() == Cover::COVERED) {
+                    if (board_[i][j]->get_flag() == Flag::FLAG) {
+                        ss << 'F';
+                    } else if (board_[i][j]->get_flag() == Flag::NO_FLAG) {
+                        ss << '+';
+                    } else {
+                        ss << '?';
+                    }
+                } else if (board_[i][j]->get_cover() == Cover::REVEALED) {
+                    if (board_[i][j]->get_num() == 9) {
+                        ss << 'X';
+                    } else if (board_[i][j]->get_num() >= 0 
+                               and board_[i][j]->get_num() < 9) {
+                        ss << char('0' + board_[i][j]->get_num());
+                    } else {
+                        ss << '?';
+                    }
+                } else {
+                    ss << '?';
+                }
+                ss << ' ';
+            }
+            ss << '\n';
+        }
+        return ss.str();
+    }
 
 protected:
     std::vector<std::vector<std::shared_ptr<Position>>> board_;
